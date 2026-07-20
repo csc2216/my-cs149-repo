@@ -1,0 +1,32 @@
+random
+    [sqrt serial]:          [693.601] ms
+    [sqrt ispc]:            [171.135] ms
+    [sqrt task ispc]:       [25.659] ms
+                                    (4.05x speedup from ISPC)
+                                    (27.03x speedup from task ISPC)
+
+    [sqrt serial]:          [879.676] ms
+    [sqrt ispc]:            [216.407] ms
+    [sqrt task ispc]:       [36.869] ms
+    [sqrt avx2]:            [196.280] ms
+                                    (4.06x speedup from ISPC)
+                                    (23.86x speedup from task ISPC)
+                                    (4.48x speedup from AVX2)
+
+better (value[i] = 2.998f for every 0 <= i < N)
+    [sqrt serial]:          [1392.183] ms
+    [sqrt ispc]:            [256.695] ms
+    [sqrt task ispc]:       [42.451] ms
+                                    (5.42x speedup from ISPC)
+                                    (32.80x speedup from task ISPC)
+
+worse (one 2.998f seven 1.f)
+    [sqrt serial]:          [210.660] ms
+    [sqrt ispc]:            [256.280] ms
+    [sqrt task ispc]:       [43.136] ms
+                                    (0.82x speedup from ISPC)
+                                    (4.88x speedup from task ISPC)
+    
+
+
+

@@ -1,0 +1,24 @@
+original
+    [saxpy serial]:         [13.674] ms     [21.796] GB/s   [2.925] GFLOPS
+    [saxpy ispc]:           [14.392] ms     [20.708] GB/s   [2.779] GFLOPS
+    [saxpy task ispc]:      [12.464] ms     [23.911] GB/s   [3.209] GFLOPS
+                                    (1.15x speedup from use of tasks)
+                                    (0.95x speedup from ISPC)
+                                    (1.10x speedup from task ISPC)
+
+    i.e. the program is memory-bounded
+
+modify (use avx2 stream to avoid sending the write-back float to cache)
+    [saxpy serial]:         [13.607] ms     [21.902] GB/s   [2.940] GFLOPS
+    [saxpy ispc]:           [16.633] ms     [17.918] GB/s   [2.405] GFLOPS
+    [saxpy task ispc]:      [12.944] ms     [23.025] GB/s   [3.090] GFLOPS
+    [saxpy avx2 stream]:    [9.549] ms      [31.209] GB/s   [4.189] GFLOPS
+    [saxpy avx2 task]:      [8.736] ms      [34.115] GB/s   [4.579] GFLOPS
+                                    (1.29x speedup from use of tasks)
+                                    (0.82x speedup from ISPC)
+                                    (1.05x speedup from task ISPC)
+                                    (1.42x speedup from AVX2 Stream)
+                                    (1.56x speedup from AVX2 task)
+    (avx2 task uses threads)                                
+
+

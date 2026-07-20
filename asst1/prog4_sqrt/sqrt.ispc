@@ -60,3 +60,4 @@ export void sqrt_ispc_withtasks(uniform int N,
 
     launch[N/span] sqrt_ispc_task(N, span, initialGuess, values, output);
 }
+

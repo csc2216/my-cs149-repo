@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <thread>
+#include <cstdlib>
 
 #include "CycleTimer.h"
 
@@ -23,6 +24,15 @@ extern void mandelbrotSerial(
     int output[]);
 
 
+extern void mandelbrotSerial2(
+    float x0, float y0, float x1, float y1,
+    int width, int height,
+    int maxIterations,
+    int output[],
+    int threadId,
+    int numThreads);
+
+
 //
 // workerThreadStart --
 //
@@ -35,7 +45,46 @@ void workerThreadStart(WorkerArgs * const args) {
     // program that uses two threads, thread 0 could compute the top
     // half of the image and thread 1 could compute the bottom half.
 
-    printf("Hello world from thread %d\n", args->threadId);
+    double startTime = CycleTimer::currentSeconds();
+
+    int numRows = (args->height / args->numThreads);
+    int startRow = args->threadId * numRows;
+
+    if (args->threadId == args->numThreads - 1) {
+        numRows = args->height - startRow;
+    }
+
+    mandelbrotSerial(
+        args->x0, args->y0, args->x1, args->y1,
+        args->width, args->height,
+        startRow, numRows,
+        args->maxIterations,
+        args->output
+    );
+
+    double endTime = CycleTimer::currentSeconds();
+    double duration = endTime - startTime;
+
+    printf("Hello world from thread %d, execution time: %.3f ms\n", args->threadId, duration * 1000.0);
+}
+
+void workerThreadStart2(WorkerArgs * const args) {
+
+    double startTime = CycleTimer::currentSeconds();
+
+    mandelbrotSerial2(
+        args->x0, args->y0, args->x1, args->y1,
+        args->width, args->height,
+        args->maxIterations,
+        args->output,
+        args->threadId,
+        args->numThreads
+    );
+
+    double endTime = CycleTimer::currentSeconds();
+    double duration = endTime - startTime;
+
+    printf("Hello world from thread %d, execution time: %.3f ms\n", args->threadId, duration * 1000.0);
 }
 
 //
@@ -83,7 +132,7 @@ void mandelbrotThread(
     // are created and the main application thread is used as a worker
     // as well.
     for (int i=1; i<numThreads; i++) {
-        workers[i] = std::thread(workerThreadStart, &args[i]);
+        workers[i] = std::thread(workerThreadStart2, &args[i]);
     }
     
     workerThreadStart(&args[0]);

@@ -1,5 +1,5 @@
 CXX=g++ -m64
-CXXFLAGS=-I../common -Iobjs/ -O2 -Wall 
+CXXFLAGS=-I../common -Iobjs/ -O2 -Wall -mavx2 -mfma
 ISPC=ispc
 # note: requires AVX2
 ISPCFLAGS=-O3 --target=avx2-i32x8 --arch=x86-64 --pic

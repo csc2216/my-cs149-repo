@@ -1,0 +1,42 @@
+M = 1e6;
+N = 100;
+K = 3;
+
+old
+    Running K-means with: M=1000000, N=100, K=3, epsilon=0.100000
+    [Total Time]: 10690.247 ms
+
+old + timer
+    Running K-means with: M=1000000, N=100, K=3, epsilon=0.100000
+    Time in computeAssignments: 8184.640 ms
+    Time in computeCentroids:   1433.655 ms
+    Time in computeCost:        2408.540 ms
+    [Total Time]: 12026.906 ms
+
+
+Consider the computeAssignments stage : K is too small to be parallelized, 
+    also parallelize the computation on m won't lead to race condition, 
+    so we can delete the args->start and args->end and using multithreads instead. 
+
+
+new + timer (numThreads = 4)
+    Running K-means with: M=1000000, N=100, K=3, epsilon=0.100000
+    Time in computeAssignments: 2637.726 ms
+    Time in computeCentroids:   1374.602 ms
+    Time in computeCost:        2424.365 ms
+    [Total Time]: 6436.776 ms
+
+new + timer (numThreads = 8)
+    Running K-means with: M=1000000, N=100, K=3, epsilon=0.100000
+    Time in computeAssignments: 1926.534 ms
+    Time in computeCentroids:   1447.997 ms
+    Time in computeCost:        2424.540 ms
+    [Total Time]: 5799.151 ms
+
+new + timer (numThreads = 16)
+    Running K-means with: M=1000000, N=100, K=3, epsilon=0.100000
+    Time in computeAssignments: 1820.706 ms
+    Time in computeCentroids:   1370.804 ms
+    Time in computeCost:        2353.876 ms
+    [Total Time]: 5545.465 ms
+

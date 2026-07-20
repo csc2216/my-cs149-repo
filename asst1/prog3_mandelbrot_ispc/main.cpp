@@ -4,7 +4,6 @@
 
 #include "CycleTimer.h"
 #include "mandelbrot_ispc.h"
-
 extern void mandelbrotSerial(
     float x0, float y0, float x1, float y1,
     int width, int height,
@@ -128,7 +127,7 @@ int main(int argc, char** argv) {
         output_serial[i] = 0;
 
     //
-    // Run the serial implementation. Teport the minimum time of three
+    // Run the serial implementation. Report the minimum time of three
     // runs for robust timing.
     //
     double minSerial = 1e30;
