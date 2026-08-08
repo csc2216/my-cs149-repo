@@ -3,6 +3,14 @@
 
 #include "itasksys.h"
 
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+#include <vector>
+#include <unordered_map>
+#include <unordered_set>
+
 /*
  * TaskSystemSerial: This class is the student's implementation of a
  * serial task execution engine.  See definition of ITaskSystem in
@@ -60,6 +68,30 @@ class TaskSystemParallelThreadPoolSpinning: public ITaskSystem {
  * itasksys.h for documentation of the ITaskSystem interface.
  */
 class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
+    private:
+        struct BulkTask {
+            TaskID id_;
+            IRunnable* runnable_;
+            int num_total_tasks_;
+            int current_task_id_;
+            int tasks_remaining_; 
+        };
+
+        std::vector<std::thread> workers_;
+        std::mutex mutex_;
+        std::condition_variable worker_cv_;
+        std::condition_variable sync_cv_;
+
+        bool stop_pool_;
+        TaskID next_task_id_;
+        int active_bulk_tasks_;  // bulkTasks that are not done yet
+
+        std::queue<BulkTask*> ready_queue_;
+        std::unordered_map<TaskID, BulkTask*> waiting_tasks_;
+        std::unordered_map<TaskID, int> dependency_count_;
+        std::unordered_map<TaskID, std::vector<TaskID>> dependency_graph_;
+        std::unordered_set<TaskID> completed_tasks_;
+
     public:
         TaskSystemParallelThreadPoolSleeping(int num_threads);
         ~TaskSystemParallelThreadPoolSleeping();

@@ -3,6 +3,12 @@
 
 #include "itasksys.h"
 
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <thread>
+#include <vector>
+
 /*
  * TaskSystemSerial: This class is the student's implementation of a
  * serial task execution engine.  See definition of ITaskSystem in
@@ -26,6 +32,9 @@ class TaskSystemSerial: public ITaskSystem {
  * of the ITaskSystem interface.
  */
 class TaskSystemParallelSpawn: public ITaskSystem {
+    private: 
+        int num_threads_;
+
     public:
         TaskSystemParallelSpawn(int num_threads);
         ~TaskSystemParallelSpawn();
@@ -43,6 +52,15 @@ class TaskSystemParallelSpawn: public ITaskSystem {
  * documentation of the ITaskSystem interface.
  */
 class TaskSystemParallelThreadPoolSpinning: public ITaskSystem {
+    private: 
+        std::vector<std::thread> workers_;
+        std::atomic<bool> stop_pool_;
+
+        IRunnable *current_runnable_;
+        std::atomic<int> num_total_tasks_;
+        std::atomic<int> current_task_id_;
+        std::atomic<int> completed_task_;
+        
     public:
         TaskSystemParallelThreadPoolSpinning(int num_threads);
         ~TaskSystemParallelThreadPoolSpinning();
@@ -60,6 +78,18 @@ class TaskSystemParallelThreadPoolSpinning: public ITaskSystem {
  * itasksys.h for documentation of the ITaskSystem interface.
  */
 class TaskSystemParallelThreadPoolSleeping: public ITaskSystem {
+    private: 
+        std::vector<std::thread> workers_;
+        std::atomic<bool> stop_pool_;
+
+        std::mutex mutex_;
+        std::condition_variable cv_;
+
+        IRunnable *current_runnable_;
+        std::atomic<int> num_total_tasks_;
+        std::atomic<int> current_task_id_;
+        std::atomic<int> completed_task_;
+
     public:
         TaskSystemParallelThreadPoolSleeping(int num_threads);
         ~TaskSystemParallelThreadPoolSleeping();

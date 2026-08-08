@@ -1,0 +1,282 @@
+first result
+
+    ================================================================================
+    Running task system grading harness... (22 total tests)
+      - Detected CPU with 8 execution contexts
+      - Task system configured to use at most 8 threads
+    ================================================================================
+    ================================================================================
+    Executing test: super_super_light...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_super_light
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        55.169    46.396      1.19  (OK)
+    ================================================================================
+    Executing test: super_super_light_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_super_light_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        31.667    12.511      2.53  (NOT OK)
+    ================================================================================
+    Executing test: super_light...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_light
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        78.648    55.195      1.42  (OK)
+    ================================================================================
+    Executing test: super_light_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_light_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        62.511    46.804      1.34  (OK)
+    ================================================================================
+    Executing test: ping_pong_equal...
+    Reference binary: ./runtasks_ref_linux
+    Results for: ping_pong_equal
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        382.174   407.556     0.94  (OK)
+    ================================================================================
+    Executing test: ping_pong_equal_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: ping_pong_equal_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        355.389   393.183     0.90  (OK)
+    ================================================================================
+
+
+second result (put the delete_bulk_task part outside the lock, 
+    then the performance of super_super_light_async becomes much better (2.53 -> 0.24))
+
+    ================================================================================
+    Running task system grading harness... (22 total tests)
+      - Detected CPU with 8 execution contexts
+      - Task system configured to use at most 8 threads
+    ================================================================================
+    ================================================================================
+    Executing test: super_super_light...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_super_light
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        73.129    63.263      1.16  (OK)
+    ================================================================================
+    Executing test: super_super_light_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_super_light_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        12.337    51.682      0.24  (OK)  (2.53->0.24)
+    ================================================================================
+    Executing test: super_light...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_light
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        98.482    70.385      1.40  (OK)
+    ================================================================================
+    Executing test: super_light_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_light_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        79.634    57.123      1.39  (OK)
+    ================================================================================
+    Executing test: ping_pong_equal...
+    Reference binary: ./runtasks_ref_linux
+    Results for: ping_pong_equal
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        488.519   456.576     1.07  (OK)
+    ================================================================================
+    Executing test: ping_pong_equal_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: ping_pong_equal_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        456.55    451.16      1.01  (OK)
+    ================================================================================
+
+
+third result (when tasks are pushed into the ready_queue(while in the lock state), we decide the # of threads_to_notify(maybe less than the worker_size()) instead of just notify_all,
+    then the performance of most of the tasks becomes better)
+
+    ================================================================================
+    Running task system grading harness... (22 total tests)
+      - Detected CPU with 8 execution contexts
+      - Task system configured to use at most 8 threads
+    ================================================================================
+    ================================================================================
+    Executing test: super_super_light...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_super_light
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        57.835    64.335      0.90  (OK)  (1.16->0.90)
+    ================================================================================
+    Executing test: super_super_light_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_super_light_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        22.518    62.5        0.36  (OK)  
+    ================================================================================
+    Executing test: super_light...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_light
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        82.995    83.708      0.99  (OK)  (1.40->0.99)
+    ================================================================================
+    Executing test: super_light_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_light_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        65.761    65.455      1.00  (OK)  (1.39->1.00)
+    ================================================================================
+    Executing test: ping_pong_equal...
+    Reference binary: ./runtasks_ref_linux
+    Results for: ping_pong_equal
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        332.09    409.9       0.81  (OK)  (1.07->0.81)
+    ================================================================================
+    Executing test: ping_pong_equal_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: ping_pong_equal_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        330.708   390.86      0.85  (OK)  (1.01->0.85)
+    ================================================================================ 
+
+
+final result (use the code in the third result to run all tests)
+
+    ================================================================================
+    Running task system grading harness... (22 total tests)
+      - Detected CPU with 8 execution contexts
+      - Task system configured to use at most 8 threads
+    ================================================================================
+    ================================================================================
+    Executing test: super_super_light...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_super_light
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        46.164    47.906      0.96  (OK)
+    ================================================================================
+    Executing test: super_super_light_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_super_light_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        15.881    39.123      0.41  (OK)
+    ================================================================================
+    Executing test: super_light...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_light
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        54.372    62.813      0.87  (OK)
+    ================================================================================
+    Executing test: super_light_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: super_light_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        48.599    69.886      0.70  (OK)
+    ================================================================================
+    Executing test: ping_pong_equal...
+    Reference binary: ./runtasks_ref_linux
+    Results for: ping_pong_equal
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        329.563   423.337     0.78  (OK)
+    ================================================================================
+    Executing test: ping_pong_equal_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: ping_pong_equal_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        314.605   405.95      0.77  (OK)
+    ================================================================================
+    Executing test: ping_pong_unequal...
+    Reference binary: ./runtasks_ref_linux
+    Results for: ping_pong_unequal
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        485.877   558.981     0.87  (OK)
+    ================================================================================
+    Executing test: ping_pong_unequal_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: ping_pong_unequal_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        484.657   539.011     0.90  (OK)
+    ================================================================================
+    Executing test: recursive_fibonacci...
+    Reference binary: ./runtasks_ref_linux
+    Results for: recursive_fibonacci
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        247.374   391.796     0.63  (OK)
+    ================================================================================
+    Executing test: recursive_fibonacci_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: recursive_fibonacci_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        249.938   440.849     0.57  (OK)
+    ================================================================================
+    Executing test: math_operations_in_tight_for_loop...
+    Reference binary: ./runtasks_ref_linux
+    Results for: math_operations_in_tight_for_loop
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        316.106   465.786     0.68  (OK)
+    ================================================================================
+    Executing test: math_operations_in_tight_for_loop_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: math_operations_in_tight_for_loop_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        274.673   399.876     0.69  (OK)
+    ================================================================================
+    Executing test: math_operations_in_tight_for_loop_fewer_tasks...
+    Reference binary: ./runtasks_ref_linux
+    Results for: math_operations_in_tight_for_loop_fewer_tasks
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        336.245   482.57      0.70  (OK)
+    ================================================================================
+    Executing test: math_operations_in_tight_for_loop_fewer_tasks_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: math_operations_in_tight_for_loop_fewer_tasks_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        141.966   222.673     0.64  (OK)
+    ================================================================================
+    Executing test: math_operations_in_tight_for_loop_fan_in...
+    Reference binary: ./runtasks_ref_linux
+    Results for: math_operations_in_tight_for_loop_fan_in
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        103.32    146.124     0.71  (OK)
+    ================================================================================
+    Executing test: math_operations_in_tight_for_loop_fan_in_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: math_operations_in_tight_for_loop_fan_in_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        72.92     108.498     0.67  (OK)
+    ================================================================================
+    Executing test: math_operations_in_tight_for_loop_reduction_tree...
+    Reference binary: ./runtasks_ref_linux
+    Results for: math_operations_in_tight_for_loop_reduction_tree
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        82.301    121.466     0.68  (OK)
+    ================================================================================
+    Executing test: math_operations_in_tight_for_loop_reduction_tree_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: math_operations_in_tight_for_loop_reduction_tree_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        70.92     108.633     0.65  (OK)
+    ================================================================================
+    Executing test: spin_between_run_calls...
+    Reference binary: ./runtasks_ref_linux
+    Results for: spin_between_run_calls
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        147.431   281.611     0.52  (OK)
+    ================================================================================
+    Executing test: spin_between_run_calls_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: spin_between_run_calls_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        154.454   276.852     0.56  (OK)
+    ================================================================================
+    Executing test: mandelbrot_chunked...
+    Reference binary: ./runtasks_ref_linux
+    Results for: mandelbrot_chunked
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        70.696    64.736      1.09  (OK)
+    ================================================================================
+    Executing test: mandelbrot_chunked_async...
+    Reference binary: ./runtasks_ref_linux
+    Results for: mandelbrot_chunked_async
+                                            STUDENT   REFERENCE   PERF?
+    [Parallel + Thread Pool + Sleep]        70.147    64.705      1.08  (OK)
+    ================================================================================
+    Overall performance results
+    [Parallel + Thread Pool + Sleep]        : All passed Perf

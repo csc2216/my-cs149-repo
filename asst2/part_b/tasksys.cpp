@@ -1,5 +1,7 @@
 #include "tasksys.h"
 
+#include <algorithm>
+
 
 IRunnable::~IRunnable() {}
 
@@ -133,6 +135,76 @@ TaskSystemParallelThreadPoolSleeping::TaskSystemParallelThreadPoolSleeping(int n
     // Implementations are free to add new class member variables
     // (requiring changes to tasksys.h).
     //
+
+    stop_pool_ = false;
+    next_task_id_ = 0;
+    active_bulk_tasks_ = 0;
+
+    auto worker_logic = [&](){
+        while (true) {
+            BulkTask* current_bulk_task = nullptr;
+            int my_task_id = -1;
+            int total_tasks = -1;
+
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                worker_cv_.wait(lock, [this]{
+                    return !ready_queue_.empty() || stop_pool_;
+                });
+
+                if (ready_queue_.empty() && stop_pool_) {
+                    return;
+                }
+                
+                current_bulk_task = ready_queue_.front();
+                my_task_id = current_bulk_task->current_task_id_++;
+                total_tasks = current_bulk_task->num_total_tasks_;
+
+                if (my_task_id == total_tasks - 1) {
+                    ready_queue_.pop();
+                }
+            }
+
+            current_bulk_task->runnable_->runTask(my_task_id, total_tasks);
+
+            int threads_to_notify = 0;
+            bool delete_bulk_task = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                current_bulk_task->tasks_remaining_--;
+                if (current_bulk_task->tasks_remaining_ == 0) {
+                    delete_bulk_task = true;
+                    completed_tasks_.insert(current_bulk_task->id_);
+
+                    for (TaskID dependent_task_id : dependency_graph_[current_bulk_task->id_]) {
+                        dependency_count_[dependent_task_id]--;
+                        if (dependency_count_[dependent_task_id] == 0) {
+                            ready_queue_.push(waiting_tasks_[dependent_task_id]);
+                            threads_to_notify += waiting_tasks_[dependent_task_id]->num_total_tasks_;
+                            waiting_tasks_.erase(dependent_task_id);
+                        }
+                    }
+                    dependency_graph_.erase(current_bulk_task->id_);
+
+                    active_bulk_tasks_--;
+                    if (active_bulk_tasks_ == 0) {
+                        sync_cv_.notify_all();
+                    }
+                }
+            }
+            threads_to_notify = std::min(threads_to_notify, (int)workers_.size());
+            for (int i = 0; i < threads_to_notify; i++) {
+                worker_cv_.notify_one();
+            }
+            if (delete_bulk_task) {
+                delete current_bulk_task;
+            }
+        }
+    };
+
+    for (int i = 0; i < num_threads - 1; i++) {
+        workers_.push_back(std::thread(worker_logic));
+    }
 }
 
 TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
@@ -142,6 +214,16 @@ TaskSystemParallelThreadPoolSleeping::~TaskSystemParallelThreadPoolSleeping() {
     // Implementations are free to add new class member variables
     // (requiring changes to tasksys.h).
     //
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stop_pool_ = true;
+    }
+    worker_cv_.notify_all();
+
+    for (int i = 0; i < (int)workers_.size(); i++) {
+        workers_[i].join();
+    }
 }
 
 void TaskSystemParallelThreadPoolSleeping::run(IRunnable* runnable, int num_total_tasks) {
@@ -153,9 +235,8 @@ void TaskSystemParallelThreadPoolSleeping::run(IRunnable* runnable, int num_tota
     // tasks sequentially on the calling thread.
     //
 
-    for (int i = 0; i < num_total_tasks; i++) {
-        runnable->runTask(i, num_total_tasks);
-    }
+    runAsyncWithDeps(runnable, num_total_tasks, {});
+    sync();
 }
 
 TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnable, int num_total_tasks,
@@ -166,11 +247,38 @@ TaskID TaskSystemParallelThreadPoolSleeping::runAsyncWithDeps(IRunnable* runnabl
     // TODO: CS149 students will implement this method in Part B.
     //
 
-    for (int i = 0; i < num_total_tasks; i++) {
-        runnable->runTask(i, num_total_tasks);
+    TaskID my_task_id;
+
+    int threads_to_notify = 0;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        my_task_id = next_task_id_++;
+        BulkTask* new_bulk_task = new BulkTask{my_task_id, runnable, num_total_tasks, 0, num_total_tasks};
+        active_bulk_tasks_++;
+
+        std::vector<TaskID> current_deps;
+        for (TaskID dep : deps) {
+            if (completed_tasks_.find(dep) == completed_tasks_.end()) {
+                current_deps.push_back(dep);
+            }
+        }
+        
+        if (current_deps.empty()) {
+            ready_queue_.push(new_bulk_task);
+            threads_to_notify = std::min(new_bulk_task->num_total_tasks_, (int)workers_.size());
+        } else {
+            waiting_tasks_[my_task_id] = new_bulk_task;
+            dependency_count_[my_task_id] = current_deps.size();
+            for (TaskID dep : current_deps) {
+                dependency_graph_[dep].push_back(my_task_id);
+            }
+        }
+    }
+    for (int i = 0; i < threads_to_notify; i++) {
+        worker_cv_.notify_one();
     }
 
-    return 0;
+    return my_task_id;
 }
 
 void TaskSystemParallelThreadPoolSleeping::sync() {
@@ -179,5 +287,8 @@ void TaskSystemParallelThreadPoolSleeping::sync() {
     // TODO: CS149 students will modify the implementation of this method in Part B.
     //
 
-    return;
+    std::unique_lock<std::mutex> lock(mutex_);
+    sync_cv_.wait(lock, [this]{
+        return active_bulk_tasks_ == 0;
+    });
 }
