@@ -12,7 +12,7 @@
 
 #include "CycleTimer.h"
 
-#define THREADS_PER_BLOCK 256
+#define THREADS_PER_BLOCK 256  // 2**8
 
 
 // helper function to round an integer up to the next power of 2
@@ -25,6 +25,122 @@ static inline int nextPow2(int n) {
     n |= n >> 16;
     n++;
     return n;
+}
+
+
+__global__ void 
+local_scan(int* array, int* block_sums) {
+
+    __shared__ int temp[2 * THREADS_PER_BLOCK];  // chunk_size 
+    
+    int thread_id = threadIdx.x;
+    int chunk_size = 2 * THREADS_PER_BLOCK;
+    int block_start_index = blockIdx.x * chunk_size;
+    int i = 2 * thread_id + 1;
+    int d = 1;
+    
+    int iters = __ffs(chunk_size) - 1;  
+
+    temp[i] = array[block_start_index + i];
+    temp[i - 1] = array[block_start_index + i - 1];
+
+    int last_element = 0;
+    if (thread_id == THREADS_PER_BLOCK - 1) {
+        last_element = temp[chunk_size - 1];
+    }
+
+    for (int iter = 0; iter < iters; iter++) {
+        if (i < chunk_size) {
+            temp[i] += temp[i - d];
+        }
+        i = i * 2 + 1;
+        d *= 2;
+        __syncthreads();
+    }
+
+    if (thread_id == 0) {
+        temp[chunk_size - 1] = 0;
+    }
+
+    for (int iter = 0; iter < iters; iter++) {
+        d /= 2;
+        i = (i - 1) / 2;
+        __syncthreads();
+        if (i < chunk_size) {
+            int t = temp[i];
+            temp[i] += temp[i - d];
+            temp[i - d] = t;
+        }
+    }
+    __syncthreads();
+
+    if (thread_id == THREADS_PER_BLOCK - 1) {
+        block_sums[blockIdx.x] = temp[chunk_size - 1] + last_element;
+    }
+
+    array[block_start_index + 2 * thread_id] = temp[i - 1];
+    array[block_start_index + 2 * thread_id + 1] = temp[i];
+}
+
+
+__global__ void 
+single_block_scan(int* array) {
+
+    __shared__ int temp[2 * THREADS_PER_BLOCK];  // chunk_size
+
+    int thread_id = threadIdx.x;
+    int chunk_size = 2 * THREADS_PER_BLOCK;
+
+    int i = 2 * thread_id + 1;
+    int d = 1;
+    int iters = __ffs(chunk_size) - 1;  
+
+    temp[i] = array[i];
+    temp[i - 1] = array[i - 1];
+
+    for (int iter = 0; iter < iters; iter++) {
+        if (i < chunk_size) {
+            temp[i] += temp[i - d];
+        }
+        i = i * 2 + 1;
+        d *= 2;
+        __syncthreads();
+    }
+
+    if (thread_id == 0) {
+        temp[chunk_size - 1] = 0;
+    }
+
+    for (int iter = 0; iter < iters; iter++) {
+        d /= 2;
+        i = (i - 1) / 2;
+        __syncthreads();
+        if (i < chunk_size) {
+            int t = temp[i];
+            temp[i] += temp[i - d];
+            temp[i - d] = t;
+        }
+    }
+    __syncthreads();
+
+    array[2 * thread_id] = temp[i - 1];
+    array[2 * thread_id + 1] = temp[i];
+}
+
+
+__global__ void
+add_block_sums(int* array, int* block_sums) {
+
+    int i = 2 * threadIdx.x;
+    int block_id = blockIdx.x;
+    int chunk_size = 2 * THREADS_PER_BLOCK;
+    int index = block_id * chunk_size + i;
+    
+    
+    if (block_id > 0) {
+        array[index] += block_sums[block_id];
+        array[index + 1] += block_sums[block_id];
+    }
 }
 
 // exclusive_scan --
@@ -54,7 +170,24 @@ void exclusive_scan(int* input, int N, int* result)
     // to CUDA kernel functions (that you must write) to implement the
     // scan.
 
+    int chunk_size = 2 * THREADS_PER_BLOCK;
+    int num_blocks = (N + chunk_size - 1) / chunk_size;
 
+    int *device_block_sums;
+    int alloc_nums = ((num_blocks + chunk_size - 1) / chunk_size) * chunk_size;
+    cudaMalloc((void **)&device_block_sums, alloc_nums * sizeof(int));
+
+    local_scan<<<num_blocks, THREADS_PER_BLOCK>>>(result, device_block_sums);
+
+    if (num_blocks <= chunk_size) {
+        single_block_scan<<<1, THREADS_PER_BLOCK>>>(device_block_sums);
+    } else {
+        exclusive_scan(device_block_sums, num_blocks, device_block_sums);
+    }
+
+    add_block_sums<<<num_blocks, THREADS_PER_BLOCK>>>(result, device_block_sums);
+
+    cudaFree(device_block_sums);
 }
 
 
@@ -141,6 +274,24 @@ double cudaScanThrust(int* inarray, int* end, int* resultarray) {
 }
 
 
+__global__ void flag(int* input, int length, int* flags) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < length - 1) {
+        flags[i] = (input[i] == input[i + 1]) ? 1 : 0;
+    } else if (i == length - 1) {
+        flags[i] = 0; 
+    }
+}
+
+__global__ void write_repeats_indices(int* flags, int* flags_scan, int* output, int length) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;  // index of array
+    if (i < length - 1 && flags[i] == 1) {
+        int repeats_index = flags_scan[i];  // # of repeats before i
+        output[repeats_index] = i;
+    }
+}
+
+
 // find_repeats --
 //
 // Given an array of integers `device_input`, returns an array of all
@@ -161,7 +312,26 @@ int find_repeats(int* device_input, int length, int* device_output) {
     // must ensure that the results of find_repeats are correct given
     // the actual array length.
 
-    return 0; 
+    int *device_flags;
+    int *device_flags_scan;
+
+    int chunk_size_of_scan = 2 * THREADS_PER_BLOCK;
+    int alloc_nums = ((length + chunk_size_of_scan - 1) / chunk_size_of_scan) * chunk_size_of_scan;
+    cudaMalloc((void **)&device_flags, alloc_nums * sizeof(int));
+    cudaMalloc((void **)&device_flags_scan, alloc_nums * sizeof(int));
+
+    flag<<<(length + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK, THREADS_PER_BLOCK>>>(device_input, length, device_flags);
+    cudaMemcpy(device_flags_scan, device_flags, length * sizeof(int), cudaMemcpyDeviceToDevice);
+    exclusive_scan(device_flags, length, device_flags_scan);
+    write_repeats_indices<<<(length + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK, THREADS_PER_BLOCK>>>(device_flags, device_flags_scan, device_output, length);
+
+    int total_repeats = 0;
+    cudaMemcpy(&total_repeats, &device_flags_scan[length - 1], sizeof(int), cudaMemcpyDeviceToHost);
+
+    cudaFree(device_flags);
+    cudaFree(device_flags_scan);
+
+    return total_repeats; 
 }
 
 
@@ -189,7 +359,7 @@ double cudaFindRepeats(int *input, int length, int *output, int *output_length) 
 
     // set output count and results array
     *output_length = result;
-    cudaMemcpy(output, device_output, length * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(output, device_output, result * sizeof(int), cudaMemcpyDeviceToHost);
 
     cudaFree(device_input);
     cudaFree(device_output);

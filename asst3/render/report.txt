@@ -1,0 +1,171 @@
+All the tests are run on RTX 4090
+
+final result:
+   
+    ------------
+    Score table:
+    ------------
+    --------------------------------------------------------------------------
+    | Scene Name      | Ref Time (T_ref) | Your Time (T)   | Score           |
+    --------------------------------------------------------------------------
+    | rgb             | 0.0478           | 0.0568          | 9               |
+    | rand10k         | 0.5059           | 0.3779          | 9               |
+    | rand100k        | 4.6472           | 3.2965          | 9               |
+    | pattern         | 0.0812           | 0.0649          | 9               |
+    | snowsingle      | 2.9694           | 1.4801          | 9               |
+    | biglittle       | 2.6939           | 3.1566          | 9               |
+    | rand1M          | 28.7865          | 15.1284         | 9               |
+    | micro2M         | 54.7346          | 28.2502         | 9               |
+    --------------------------------------------------------------------------
+    |                                    | Total score:    | 72/72           |
+    --------------------------------------------------------------------------
+
+
+write-up:
+
+    I chose to parallelize over pixels first. If we parallelize over circles first, 
+    it will require a lot of communication (synchronization) between threads to ensure 
+    the correctness of the code (to preserve circle order), which will cost a lot of time.
+
+    For the execution configuration, I chose THREADS_PER_BLOCK = 256 (a healthy number) 
+    with blockDim(16, 16). This means each block contains 256 threads, with each thread 
+    responsible for rendering exactly one pixel.
+
+    Note that every block has to check all circles (whether they need to be rendered) 
+    and then render them. So I allocated a shared memory array to store the result 
+    of the checking (a flag array, where all threads check together). I also chose a good 
+    number of circles to be checked per round considering the shared memory size of the RTX 4090.
+
+
+    Then we have to deal with the flag array.
+
+    A simple way is to let every thread use a loop to iterate through the entire flag array 
+    to check which circles need to be rendered, which is my first implementation. 
+    This resulted in terrible performance. Since most circles in a large dataset do not intersect 
+    a given 16x16 block, the threads wasted millions of cycles evaluating empty flags.
+
+    Then I let thread 0 pick out the circles that needed to be rendered from the flag array 
+    and write them to a new array (valid_circles) sequentially. Then all threads will only 
+    iterate through the valid_circles array. This is my second implementation, and the 
+    performance is better but still not good enough.
+
+    After reconsidering the whole implementation, I was inspired by part 2 of this assignment 
+    and implemented a scan algorithm to convert the flag array to the valid_circles array. 
+    This is my final implementation, and the performance is perfect.
+
+
+    There are some other optimizations I did:
+    * Allocated a float4 pixelData for each thread to reduce the number of accesses to global memory.
+    * Computed the minX, maxX, minY, maxY of the block in float to directly compare with the circle bounding boxes.
+    * Added the __restrict__ qualifier to the arrays related to the circles, 
+    since they are read-only and accessed by many threads.
+
+
+    I've also done a simple experiment on circles_checked_per_thread (per round).
+
+    The logic is that there are 256 threads in a block, and each block allocates 
+    2 * circles_checked_per_thread * 256 * sizeof(int) bytes of shared memory to store 
+    the flag array and the valid_circles array.
+    So if we let circles_checked_per_thread = 8, then the shared memory size allocated 
+    by a block is 2 * 8 * 256 * 4 = 16 KB.
+    Considering the hardware of the RTX 4090, it has 128 SMs, and each SM supports 
+    up to 1536 threads and 100 KB of shared memory.
+    Recall that the block size we chose uses 256 threads and 16 KB of shared memory, 
+    which means an SM can run 6 blocks with high utilization (almost 100% occupancy).
+
+    (Note that a default 1024x1024 image needs 4096 blocks, i.e., about 700 SMs,
+    which scales perfectly for the RTX 4090 with its 128 SMs.)
+
+    Notice that if we let circles_checked_per_thread = 16, a block will need 32 KB 
+    of shared memory. This means an SM can only run 3 blocks, which is 768 threads 
+    (much less than the previous setup). So although it can reduce the total iteration time 
+    (reducing the number of __syncthreads calls), it drastically reduces overall efficiency.
+    (I put the result of this experiment at the bottom of this file.)
+
+    
+
+first result (every thread iterates through the entire flag array , terrible performance)
+
+------------
+Score table:
+------------
+--------------------------------------------------------------------------
+| Scene Name      | Ref Time (T_ref) | Your Time (T)   | Score           |
+--------------------------------------------------------------------------
+| rgb             | 0.047            | 1.2154          | 2               |
+| rand10k         | 0.5087           | 3.8126          | 3               |
+| rand100k        | 4.2939           | 29.3876         | 4               |
+| pattern         | 0.0808           | 1.2157          | 2               |
+| snowsingle      | 2.9744           | 28.4511         | 3               |
+| biglittle       | 2.7082           | 6.2765          | 6               |
+| rand1M          | 28.466           | 270.5822        | 3               |
+| micro2M         | 54.1332          | 537.8388        | 3               |
+--------------------------------------------------------------------------
+|                                    | Total score:    | 26/72           |
+--------------------------------------------------------------------------
+
+
+second result (only thread0 converts the flag array to valid_circles array,
+               performance is better but still not good enough)
+
+------------
+Score table:
+------------
+--------------------------------------------------------------------------
+| Scene Name      | Ref Time (T_ref) | Your Time (T)   | Score           |
+--------------------------------------------------------------------------
+| rgb             | 0.0417           | 0.3016          | 3               |
+| rand10k         | 0.4836           | 1.6515          | 5               |
+| rand100k        | 4.4892           | 15.8263         | 4               |
+| pattern         | 0.0727           | 0.3072          | 4               |
+| snowsingle      | 2.9343           | 13.5655         | 4               |
+| biglittle       | 2.5282           | 4.3816          | 7               |
+| rand1M          | 28.568           | 128.9154        | 4               |
+| micro2M         | 54.3809          | 253.6871        | 4               |
+--------------------------------------------------------------------------
+|                                    | Total score:    | 35/72           |
+--------------------------------------------------------------------------
+
+
+third result (convert the flag array to valid_circles array using scan,
+              perfect performance)
+
+------------
+Score table:
+------------
+--------------------------------------------------------------------------
+| Scene Name      | Ref Time (T_ref) | Your Time (T)   | Score           |
+--------------------------------------------------------------------------
+| rgb             | 0.0478           | 0.0568          | 9               |
+| rand10k         | 0.5059           | 0.3779          | 9               |
+| rand100k        | 4.6472           | 3.2965          | 9               |
+| pattern         | 0.0812           | 0.0649          | 9               |
+| snowsingle      | 2.9694           | 1.4801          | 9               |
+| biglittle       | 2.6939           | 3.1566          | 9               |
+| rand1M          | 28.7865          | 15.1284         | 9               |
+| micro2M         | 54.7346          | 28.2502         | 9               |
+--------------------------------------------------------------------------
+|                                    | Total score:    | 72/72           |
+--------------------------------------------------------------------------
+
+
+the experiment
+performance of final code with circles_checked_per_thread = 16 (2 times of original circles_checked_per_thread)
+
+------------
+Score table:
+------------
+--------------------------------------------------------------------------
+| Scene Name      | Ref Time (T_ref) | Your Time (T)   | Score           |
+--------------------------------------------------------------------------
+| rgb             | 0.0458           | 0.0879          | 6               |
+| rand10k         | 0.5041           | 0.7425          | 7               |
+| rand100k        | 4.6438           | 6.7996          | 7               |
+| pattern         | 0.0809           | 0.1125          | 8               |
+| snowsingle      | 2.9832           | 2.1566          | 9               |
+| biglittle       | 2.7129           | 6.925           | 5               |
+| rand1M          | 28.7835          | 24.162          | 9               |
+| micro2M         | 54.7162          | 38.7953         | 9               |
+--------------------------------------------------------------------------
+|                                    | Total score:    | 60/72           |
+--------------------------------------------------------------------------

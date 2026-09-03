@@ -1,0 +1,138 @@
+./checker.py scan
+Test: scan
+
+--------------
+Running tests:
+--------------
+
+Element Count: 1000000
+Correctness passed!
+Student Time: 0.288
+Ref Time: 0.448
+
+Element Count: 10000000
+Correctness passed!
+Student Time: 0.607
+Ref Time: 1.485
+
+Element Count: 20000000
+Correctness passed!
+Student Time: 0.794
+Ref Time: 4.018
+
+Element Count: 40000000
+Correctness passed!
+Student Time: 1.198
+Ref Time: 7.878
+
+-------------------------
+Scan Score Table:
+-------------------------
+-------------------------------------------------------------------------
+| Element Count   | Ref Time        | Student Time    | Score           |
+-------------------------------------------------------------------------
+| 1000000         | 0.448           | 0.288           | 1.25            |
+| 10000000        | 1.485           | 0.607           | 1.25            |
+| 20000000        | 4.018           | 0.794           | 1.25            |
+| 40000000        | 7.878           | 1.198           | 1.25            |
+-------------------------------------------------------------------------
+|                                   | Total score:    | 5.0/5.0         |
+-------------------------------------------------------------------------
+
+
+./checker.py find_repeats
+Test: find_repeats
+
+--------------
+Running tests:
+--------------
+
+Element Count: 1000000
+Correctness passed!
+Student Time: 0.866
+Ref Time: 0.961
+
+Element Count: 10000000
+Correctness passed!
+Student Time: 2.101
+Ref Time: 4.227
+
+Element Count: 20000000
+Correctness passed!
+Student Time: 3.451
+Ref Time: 6.973
+
+Element Count: 40000000
+Correctness passed!
+Student Time: 5.182
+Ref Time: 12.475
+
+-------------------------
+Find_repeats Score Table:
+-------------------------
+-------------------------------------------------------------------------
+| Element Count   | Ref Time        | Student Time    | Score           |
+-------------------------------------------------------------------------
+| 1000000         | 0.961           | 0.866           | 1.25            |
+| 10000000        | 4.227           | 2.101           | 1.25            |
+| 20000000        | 6.973           | 3.451           | 1.25            |
+| 40000000        | 12.475          | 5.182           | 1.25            |
+-------------------------------------------------------------------------
+|                                   | Total score:    | 5.0/5.0         |
+-------------------------------------------------------------------------
+
+
+compeat with thrust (1.175 (mine) vs 0.882 (thrust) at N = 10 million and
+                     2.244 (mine) vs 2.210 (thrust) at N = 10 million, quite good!)
+
+N = 40,000,000
+
+./cudaScan -m scan -i random -n 40000000
+---------------------------------------------------------
+Found 1 CUDA devices
+Device 0: NVIDIA GeForce RTX 4090
+   SMs:        128
+   Global mem: 24081 MB
+   CUDA Cap:   8.9
+---------------------------------------------------------
+Array size: 40000000
+Student GPU time: 1.175 ms
+Scan outputs are correct!
+
+./cudaScan -m scan -i random -n 40000000 --thrust
+---------------------------------------------------------
+Found 1 CUDA devices
+Device 0: NVIDIA GeForce RTX 4090
+   SMs:        128
+   Global mem: 24081 MB
+   CUDA Cap:   8.9
+---------------------------------------------------------
+Array size: 40000000
+Thrust GPU time: 0.882 ms
+Scan outputs are correct!
+
+N = 100,000,000
+
+./cudaScan -m scan -i random -n 100000000
+---------------------------------------------------------
+Found 1 CUDA devices
+Device 0: NVIDIA GeForce RTX 4090
+   SMs:        128
+   Global mem: 24081 MB
+   CUDA Cap:   8.9
+---------------------------------------------------------
+Array size: 100000000
+Student GPU time: 2.244 ms
+Scan outputs are correct!
+
+./cudaScan -m scan -i random -n 100000000 -- thrust
+---------------------------------------------------------
+Found 1 CUDA devices
+Device 0: NVIDIA GeForce RTX 4090
+   SMs:        128
+   Global mem: 24081 MB
+   CUDA Cap:   8.9
+---------------------------------------------------------
+Array size: 100000000
+Student GPU time: 2.210 ms
+Scan outputs are correct!

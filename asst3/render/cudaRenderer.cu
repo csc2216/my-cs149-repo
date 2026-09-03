@@ -14,6 +14,8 @@
 #include "sceneLoader.h"
 #include "util.h"
 
+#define THREADS_PER_BLOCK 256
+
 ////////////////////////////////////////////////////////////////////////////////////////
 // Putting all the cuda kernels here
 ///////////////////////////////////////////////////////////////////////////////////////
@@ -38,7 +40,7 @@ struct GlobalConstants {
 // be stored in special "constant" memory on the GPU. (we didn't talk
 // about this type of memory in class, but constant memory is a fast
 // place to put read-only variables).
-__constant__ GlobalConstants cuConstRendererParams;
+__constant__ GlobalConstants cuConstRendererParams; 
 
 // read-only lookup tables used to quickly compute noise (needed by
 // advanceAnimation for the snowflake scene)
@@ -317,14 +319,20 @@ __global__ void kernelAdvanceSnowflake() {
 // given a pixel and a circle, determines the contribution to the
 // pixel from the circle.  Update of the image is done in this
 // function.  Called by kernelRenderCircles()
+/* 
+i change the input of the function to ensure that it use the __restrict__ memory of the circles
+which i declare in the kernelRenderPixels
+
 __device__ __inline__ void
 shadePixel(int circleIndex, float2 pixelCenter, float3 p, float4* imagePtr) {
+*/
+__device__ __inline__ void
+shadePixel(int circleIndex, float2 pixelCenter, float3 p, float rad, const float* __restrict__ color, float4* imagePtr) {
 
     float diffX = p.x - pixelCenter.x;
     float diffY = p.y - pixelCenter.y;
     float pixelDist = diffX * diffX + diffY * diffY;
 
-    float rad = cuConstRendererParams.radius[circleIndex];;
     float maxDist = rad * rad;
 
     // circle does not contribute to the image
@@ -342,6 +350,8 @@ shadePixel(int circleIndex, float2 pixelCenter, float3 p, float4* imagePtr) {
     // would be wise to perform this logic outside of the loop next in
     // kernelRenderCircles.  (If feeling good about yourself, you
     // could use some specialized template magic).
+
+    // not like rad and color, sceneName is a constant, so we don't need to optimize it.
     if (cuConstRendererParams.sceneName == SNOWFLAKES || cuConstRendererParams.sceneName == SNOWFLAKES_SINGLE_FRAME) {
 
         const float kCircleMaxAlpha = .5f;
@@ -357,7 +367,7 @@ shadePixel(int circleIndex, float2 pixelCenter, float3 p, float4* imagePtr) {
     } else {
         // simple: each circle has an assigned color
         int index3 = 3 * circleIndex;
-        rgb = *(float3*)&(cuConstRendererParams.color[index3]);
+        rgb = *(float3*)&(color[index3]);
         alpha = .5f;
     }
 
@@ -379,6 +389,8 @@ shadePixel(int circleIndex, float2 pixelCenter, float3 p, float4* imagePtr) {
     // END SHOULD-BE-ATOMIC REGION
 }
 
+// the wrong kernel
+//
 // kernelRenderCircles -- (CUDA device code)
 //
 // Each thread renders a circle.  Since there is no protection to
@@ -421,9 +433,140 @@ __global__ void kernelRenderCircles() {
         for (int pixelX=screenMinX; pixelX<screenMaxX; pixelX++) {
             float2 pixelCenterNorm = make_float2(invWidth * (static_cast<float>(pixelX) + 0.5f),
                                                  invHeight * (static_cast<float>(pixelY) + 0.5f));
-            shadePixel(index, pixelCenterNorm, p, imgPtr);
+            // i've change the input of sgadePixel                                     
+            shadePixel(index, pixelCenterNorm, p, rad, cuConstRendererParams.color, imgPtr);
             imgPtr++;
         }
+    }
+}
+
+
+// my kernel 
+//
+// follow the spirit of scan and find repeats in part2
+__device__ __inline__ void
+flagToIndex(const int* hits, int* valid_circles, int localBlockIndex, int circles_checked_per_thread, volatile int* threadSum, int* totalFlag) {
+    
+    int count = 0;
+    int idx_start = localBlockIndex * circles_checked_per_thread;
+    for (int i=0; i<circles_checked_per_thread; i++) {
+        int idx = idx_start + i;
+        if (hits[idx]) {
+            count++;
+        }
+    }
+
+    threadSum[localBlockIndex] = count;
+    __syncthreads();
+
+    // use Hillis-Steele instead of Blelloch
+    int scan_val = threadSum[localBlockIndex];
+    for (int offset = 1; offset < THREADS_PER_BLOCK; offset *= 2) {
+        int temp = 0;
+        if (localBlockIndex >= offset) {
+            temp = threadSum[localBlockIndex - offset];
+        }
+        __syncthreads();
+        if (localBlockIndex >= offset) {
+            scan_val += temp;
+            threadSum[localBlockIndex] = scan_val;
+        }
+        __syncthreads();
+    }
+
+    if (localBlockIndex == THREADS_PER_BLOCK - 1) {
+        *totalFlag = scan_val;
+    }
+
+    // the base offset for this thread to write valid_circles
+    int write_offset = scan_val - count;
+    for (int i=0; i<circles_checked_per_thread; i++) {
+        int idx = idx_start + i;
+        if (hits[idx]) {
+            valid_circles[write_offset] = idx;
+            write_offset++;
+        }
+    }
+    __syncthreads();
+}
+
+// RTX 4090 has 100 KB of shared memory and 1536 threads per SM,
+// so we can use 16 KB of shared memory per block, and 256 threads per block, which is a good ratio 
+// (6 blocks per SM).  
+//
+// the defualt size of image is 1024*1024, so as we choose 16*16 threads per block, we use 4096 blocks, 
+// i.e. around 700 SMs, which is a good size for RTX 4090, which has 128 SMs. 
+__global__ void kernelRenderPixels() {
+
+    const float* __restrict__ position = cuConstRendererParams.position;
+    const float* __restrict__ radius = cuConstRendererParams.radius;
+    const float* __restrict__ color = cuConstRendererParams.color;
+
+    int imageX = blockIdx.x * blockDim.x + threadIdx.x;
+    int imageY = blockIdx.y * blockDim.y + threadIdx.y;
+    int imageWidth = cuConstRendererParams.imageWidth;
+    int imageHeight = cuConstRendererParams.imageHeight;
+    int localblockIndex = threadIdx.y * blockDim.x + threadIdx.x;
+    int localImageIndex = imageY * imageWidth + imageX;
+
+    float4 pixelData;  // rgba
+
+    if (imageX < imageWidth && imageY < imageHeight) {
+        pixelData = *(float4*)&cuConstRendererParams.imageData[4 * localImageIndex];
+    }
+
+    const int num_circles = cuConstRendererParams.numCircles;
+    const int circles_checked_per_thread = 8;  
+    const int circles_checked_per_round = circles_checked_per_thread * THREADS_PER_BLOCK;  // 2048 in total
+    const int circle_iters = (num_circles + circles_checked_per_round - 1) / circles_checked_per_round;
+    
+    // circles that have to be rendered for the block, using 2 * circles_checked_per_round * sizeof(int) bytes = 16 KB of shared memory
+    __shared__ int hits[circles_checked_per_round];
+    __shared__ int valid_circles[circles_checked_per_round];   
+    __shared__ int threadSum[THREADS_PER_BLOCK];
+    __shared__ int valid_count;
+
+    float minX = static_cast<float>(blockIdx.x * blockDim.x) / imageWidth;
+    float maxX = static_cast<float>((blockIdx.x + 1) * blockDim.x) / imageWidth;  // don't need to care about if it > 1
+    float minY = static_cast<float>(blockIdx.y * blockDim.y) / imageHeight;
+    float maxY = static_cast<float>((blockIdx.y + 1) * blockDim.y) / imageHeight; // same as above
+
+    for (int iter=0; iter<circle_iters; iter++) {
+        
+        for (int i=0; i<circles_checked_per_round; i+=THREADS_PER_BLOCK) {
+
+            int circleIndex = iter * circles_checked_per_round + i + localblockIndex;
+            if (circleIndex < num_circles) {
+                float3 p = *(float3*)(&position[3 * circleIndex]);
+                float rad = radius[circleIndex];
+                if (minX <= p.x + rad && maxX >= p.x - rad && minY <= p.y + rad && maxY >= p.y - rad) {
+                    hits[i + localblockIndex] = 1;  // will be rendered
+                } else {
+                    hits[i + localblockIndex] = 0;  // won't be rendered
+                }
+            } else {
+                hits[i + localblockIndex] = 0;  // won't be rendered
+            }
+        }
+        __syncthreads();
+
+        // it has __syncthreads inside
+        flagToIndex(hits, valid_circles, localblockIndex, circles_checked_per_thread, threadSum, &valid_count);
+
+        if (imageX < imageWidth && imageY < imageHeight) {
+            for (int i=0; i<valid_count; i++) {
+                int circleIndex = iter * circles_checked_per_round + valid_circles[i];
+                float3 p = *(float3*)(&position[3 * circleIndex]);
+                float rad = radius[circleIndex];
+                float2 pixelCenter = make_float2(static_cast<float>(imageX + 0.5f) / imageWidth,
+                                                static_cast<float>(imageY + 0.5f) / imageHeight);
+                shadePixel(circleIndex, pixelCenter, p, rad, color, &pixelData);
+            }
+        }
+    }
+
+    if (imageX < imageWidth && imageY < imageHeight) {
+        *(float4*)&cuConstRendererParams.imageData[4 * localImageIndex] = pixelData;
     }
 }
 
@@ -636,10 +779,23 @@ CudaRenderer::advanceAnimation() {
 void
 CudaRenderer::render() {
 
+    /*  
+    // old code that doesn't follow the order of circles and has race conditions
+    //
     // 256 threads per block is a healthy number
     dim3 blockDim(256, 1);
     dim3 gridDim((numCircles + blockDim.x - 1) / blockDim.x);
 
     kernelRenderCircles<<<gridDim, blockDim>>>();
+    */
+
+    // my code
+    // use 256 threads per block 
+    dim3 blockDim(16, 16);
+    dim3 gridDim((image->width + blockDim.x - 1) / blockDim.x,
+                 (image->height + blockDim.y - 1) / blockDim.y);
+
+    kernelRenderPixels<<<gridDim, blockDim>>>();
+
     cudaDeviceSynchronize();
 }

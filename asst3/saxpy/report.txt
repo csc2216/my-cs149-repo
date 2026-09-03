@@ -1,0 +1,22 @@
+The maximum memory bandwidth of the NVIDIA GeForce RTX 4090 is 1,008 GB/s,
+   and the BW in gpu while executing the kernel is about 920 GB/s, quite good
+
+in asst1-prog5 we have 
+    [saxpy serial]:         [13.674] ms     [21.796] GB/s   [2.925] GFLOPS
+
+
+./cudaSaxpy (exp1)
+---------------------------------------------------------
+Found 1 CUDA devices
+Device 0: NVIDIA GeForce RTX 4090
+   SMs:        128
+   Global mem: 24091 MB
+   CUDA Cap:   8.9
+---------------------------------------------------------
+Running 3 timing tests:
+Effective BW by CUDA saxpy: 82.274 ms           [13.584 GB/s]
+Kernel execution time: 14.135 ms  <------------------------------- warm-up, the initialization overhead
+Effective BW by CUDA saxpy: 87.878 ms           [12.718 GB/s]
+Kernel execution time: 1.303 ms
+Effective BW by CUDA saxpy: 86.495 ms           [12.921 GB/s]
+Kernel execution time: 1.299 ms
